@@ -1,0 +1,5 @@
+# Bibliotecas do servidor do Controle Wi-Fi (versoes testadas com Python 3.13 no Windows).
+# Instalar com:  python -m pip install -r requirements.txt
+# A vgamepad instala junto o driver ViGEmBus (pede permissao de administrador).
+vgamepad==0.2.0
+websockets==17.3
