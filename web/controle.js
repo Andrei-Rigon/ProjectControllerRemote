@@ -277,13 +277,16 @@ function ligarEntradas(alvo) {
   alvo.querySelectorAll("[data-analogico]").forEach(ligarAnalogico);
 }
 
-// Analogicos: o dedo e medido a partir do centro do circulo. x vai de -1 (esquerda)
-// a 1 (direita) e y de -1 (baixo) a 1 (cima), como no controle Xbox.
+// Analogicos: o dedo e medido a partir do centro do circulo (com "Comecar do meio" ligado,
+// o circulo vem para onde o dedo encostou). x vai de -1 (esquerda) a 1 (direita) e y de
+// -1 (baixo) a 1 (cima), como no controle Xbox.
 const arredondar = (v) => Math.round(v * 1000) / 1000;
 
 // Sensibilidade dos analogicos: salva no celular, vale para todos os layouts
 const CHAVE_SENSIBILIDADE = "controle-wifi-sensibilidade";
-const SENSIBILIDADE_PADRAO = { sensibilidade: 1, curva: 1, zonaMorta: 0.05 };
+// centroNoToque: o circulo vem para onde o dedo encosta, entao o analogico sempre
+// comeca parado, mesmo tocando na borda
+const SENSIBILIDADE_PADRAO = { sensibilidade: 1, curva: 1, zonaMorta: 0.05, centroNoToque: false };
 function lerSensibilidade() {
   const salvo = lerAjustes(CHAVE_SENSIBILIDADE);
   return {
@@ -304,11 +307,27 @@ function ajustarAnalogico(x, y, ajuste) {
   return { x: arredondar((x / distancia) * m), y: arredondar((y / distancia) * m) };
 }
 
+// "Comecar do meio": logo depois de encostar, o dedao ainda se acomoda e o ponto do
+// toque escorrega alguns px (a camera dava um tranco). Nesse comeco o centro acompanha
+// o dedo; passou da folga, e movimento de verdade e conta na hora.
+const TEMPO_ASSENTAR = 150;  // ms
+const FOLGA_ASSENTAR = 0.25; // fracao do alcance, a partir do ponto onde encostou
+function assentando(toque, e, alcance) {
+  if (e.timeStamp > toque.ate) return false;
+  if (Math.hypot(e.clientX - toque.x, e.clientY - toque.y) > alcance * FOLGA_ASSENTAR) {
+    toque.ate = 0;
+    return false;
+  }
+  return true;
+}
+
 function ligarAnalogico(base) {
   const pino = base.querySelector(".pino");
   const lado = base.dataset.analogico;
   let dedo = null;      // pointerId do dedo que esta neste analogico
   let centro, alcance;  // em px da tela, medidos ao tocar
+  let repouso;          // centro do circulo parado, com "Comecar do meio"
+  let toque = null;     // onde o dedo encostou, com "Comecar do meio"
   let atual = { x: 0, y: 0 };
   let enviado = { x: 0, y: 0 };
   let quadroPedido = false;
@@ -319,7 +338,14 @@ function ligarAnalogico(base) {
     enviar({ tipo: "analogico", lado, x: atual.x, y: atual.y });
   }
 
+  // O circulo vem para baixo do dedo (volta ao soltar)
+  function centralizar(e) {
+    centro = { x: e.clientX, y: e.clientY };
+    base.style.transform = `translate(${centro.x - repouso.x}px, ${centro.y - repouso.y}px)`;
+  }
+
   function mover(e) {
+    if (toque && assentando(toque, e, alcance)) centralizar(e);
     let dx = e.clientX - centro.x;
     let dy = e.clientY - centro.y;
     const distancia = Math.hypot(dx, dy);
@@ -343,6 +369,7 @@ function ligarAnalogico(base) {
     if (dedo === null) return;
     dedo = null;
     base.classList.remove("ativo");
+    base.style.transform = "";
     pino.style.transform = "";
     atual = { x: 0, y: 0 };
     enviarAgora(); // na hora: com a pagina escondida o proximo quadro nao chega
@@ -356,6 +383,8 @@ function ligarAnalogico(base) {
     const r = base.getBoundingClientRect();
     centro = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     alcance = (r.width - pino.offsetWidth) / 2;
+    repouso = centro;
+    toque = sensibilidade[lado].centroNoToque ? { x: e.clientX, y: e.clientY, ate: e.timeStamp + TEMPO_ASSENTAR } : null;
     base.classList.add("ativo");
     mover(e);
   });
@@ -747,6 +776,8 @@ $("#pers-voltar").addEventListener("click", () => mostrarTela("menu")); // sai s
 let sensTrabalho = null; // valores em edicao (so valem ao tocar em Salvar)
 let sensLado = "esq";    // aba aberta
 let testeDedo = { x: 0, y: 0 };
+let origemTeste = null;  // centro, com "Comecar do meio" ligado
+let toqueTeste = null;   // onde o dedo encostou, com "Comecar do meio" ligado
 
 // 1.5 -> "1,5"; tira o "-0,00" de valores quase zero
 function decimal(valor, casas) {
@@ -774,6 +805,7 @@ function atualizarSensibilidade() {
   $("#v-curva").textContent = decimal(ajuste.curva, 1);
   $("#sens-zona").value = Math.round(ajuste.zonaMorta * 100);
   $("#v-zona").textContent = `${Math.round(ajuste.zonaMorta * 100)}%`;
+  $("#sens-centro").checked = ajuste.centroNoToque;
   $("#teste-area").style.setProperty("--zona", ajuste.zonaMorta);
   desenharTeste();
 }
@@ -793,8 +825,10 @@ function desenharTeste() {
 
 function moverTeste(e) {
   const r = $("#teste-area").getBoundingClientRect();
-  let x = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
-  let y = -(e.clientY - (r.top + r.height / 2)) / (r.height / 2);
+  if (toqueTeste && assentando(toqueTeste, e, r.width / 2)) origemTeste = { x: e.clientX, y: e.clientY };
+  const centro = origemTeste || { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  let x = (e.clientX - centro.x) / (r.width / 2);
+  let y = -(e.clientY - centro.y) / (r.height / 2);
   const distancia = Math.hypot(x, y);
   if (distancia > 1) {
     x /= distancia;
@@ -808,6 +842,9 @@ const areaTeste = $("#teste-area");
 areaTeste.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   areaTeste.setPointerCapture(e.pointerId);
+  // Igual ao analogico do controle: com "Comecar do meio" o toque vira o centro
+  origemTeste = null;
+  toqueTeste = sensTrabalho[sensLado].centroNoToque ? { x: e.clientX, y: e.clientY, ate: e.timeStamp + TEMPO_ASSENTAR } : null;
   moverTeste(e);
 });
 areaTeste.addEventListener("pointermove", (e) => {
@@ -838,6 +875,10 @@ $("#sens-zona").addEventListener("input", (e) => {
   sensTrabalho[sensLado].zonaMorta = Number(e.target.value) / 100;
   atualizarSensibilidade();
 });
+$("#sens-centro").addEventListener("change", (e) => {
+  sensTrabalho[sensLado].centroNoToque = e.target.checked;
+  atualizarSensibilidade();
+});
 $("#sens-restaurar").addEventListener("click", () => {
   sensTrabalho = { esq: { ...SENSIBILIDADE_PADRAO }, dir: { ...SENSIBILIDADE_PADRAO } }; // os dois analogicos
   atualizarSensibilidade();
@@ -855,6 +896,12 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) soltarTudo();
 });
 document.addEventListener("contextmenu", (e) => e.preventDefault());
+// Segurar o dedo faz o Chrome do Android vibrar (aviso do toque longo, mesmo sem menu).
+// Cancelar o touchstart desliga o toque longo; os pointer* continuam chegando normal.
+// So nas areas de apertar/arrastar: nos botoes das telas isso cancelaria o "click".
+["#pecas", "#mini", "#teste-area"].forEach((seletor) =>
+  $(seletor).addEventListener("touchstart", (e) => e.preventDefault(), { passive: false })
+);
 
 addEventListener("resize", () => {
   medir();
