@@ -321,13 +321,24 @@ function assentando(toque, e, alcance) {
   return true;
 }
 
+// Toque duplo no analogico = clique dele (L3/R3): um toque rapido e quase parado e,
+// logo em seguida, outro, que fica apertado enquanto o dedo estiver na tela
+const TOQUE_RAPIDO = 250; // ms: o 1o toque precisa ser mais curto que isso
+const TOQUE_PARADO = 0.3; // fracao do alcance que o 1o toque pode andar
+const TOQUE_DUPLO = 300;  // ms entre soltar o 1o toque e encostar o 2o
+
 function ligarAnalogico(base) {
   const pino = base.querySelector(".pino");
   const lado = base.dataset.analogico;
+  const clique = lado === "esq" ? "LS" : "RS";
   let dedo = null;      // pointerId do dedo que esta neste analogico
   let centro, alcance;  // em px da tela, medidos ao tocar
   let repouso;          // centro do circulo parado, com "Comecar do meio"
   let toque = null;     // onde o dedo encostou, com "Comecar do meio"
+  let encostou;         // onde e quando o dedo encostou: { x, y, t }
+  let afastou = 0;      // quanto o dedo andou desde que encostou (px)
+  let fimToqueRapido = -Infinity; // quando terminou o ultimo toque rapido (ms)
+  let clicado = false;  // LS/RS apertado (2o toque do toque duplo)
   let atual = { x: 0, y: 0 };
   let enviado = { x: 0, y: 0 };
   let quadroPedido = false;
@@ -344,7 +355,15 @@ function ligarAnalogico(base) {
     base.style.transform = `translate(${centro.x - repouso.x}px, ${centro.y - repouso.y}px)`;
   }
 
+  function definirClique(estado) {
+    if (clicado === estado) return;
+    clicado = estado;
+    base.classList.toggle("clicado", estado);
+    segurar("botao", clique, estado);
+  }
+
   function mover(e) {
+    afastou = Math.max(afastou, Math.hypot(e.clientX - encostou.x, e.clientY - encostou.y));
     if (toque && assentando(toque, e, alcance)) centralizar(e);
     let dx = e.clientX - centro.x;
     let dy = e.clientY - centro.y;
@@ -368,6 +387,11 @@ function ligarAnalogico(base) {
   function soltar() {
     if (dedo === null) return;
     dedo = null;
+    // Toque rapido e quase parado pode ser o 1o do toque duplo (o 2o nao conta)
+    const agora = performance.now();
+    const rapido = !clicado && agora - encostou.t < TOQUE_RAPIDO && afastou < alcance * TOQUE_PARADO;
+    fimToqueRapido = rapido ? agora : -Infinity;
+    definirClique(false);
     base.classList.remove("ativo");
     base.style.transform = "";
     pino.style.transform = "";
@@ -385,6 +409,9 @@ function ligarAnalogico(base) {
     alcance = (r.width - pino.offsetWidth) / 2;
     repouso = centro;
     toque = sensibilidade[lado].centroNoToque ? { x: e.clientX, y: e.clientY, ate: e.timeStamp + TEMPO_ASSENTAR } : null;
+    encostou = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+    afastou = 0;
+    if (e.timeStamp - fimToqueRapido < TOQUE_DUPLO) definirClique(true);
     base.classList.add("ativo");
     mover(e);
   });

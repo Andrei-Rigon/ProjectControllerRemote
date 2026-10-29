@@ -88,6 +88,7 @@ button.forma-touchpad { border-radius: calc(12 * var(--s)); background: var(--ca
   border-radius: 50%; background: var(--pino); border: calc(2 * var(--s)) solid var(--cor-jogador);
 }
 .analogico:not(.ativo), .analogico:not(.ativo) .pino { transition: transform 80ms ease-out; }
+.analogico.clicado .pino { background: var(--cor-jogador); } /* LS/RS apertado (toque duplo) */
 
 .direcional { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); }
 .direcional .centro { grid-area: 2 / 2; background: var(--peca); }

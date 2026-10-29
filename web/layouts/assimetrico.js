@@ -6,7 +6,8 @@
   elemento que pode ser movido/redimensionado na Personalizacao; "ancora" diz de
   que lado da tela ele fica em celulares mais largos ou mais estreitos.
   "envia" e o comando Xbox que vai para o PC: nome do botao (A, B, X, Y, LB, RB,
-  View, Menu, Guia), lado do gatilho (esq/dir) ou lado do analogico (esq/dir).
+  LS, RS, View, Menu, Guia), lado do gatilho (esq/dir) ou lado do analogico (esq/dir).
+  O analogico ja aperta LS/RS com toque duplo.
 */
 registrarLayout({
   id: "assimetrico",
